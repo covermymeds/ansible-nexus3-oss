@@ -218,4 +218,7 @@
     - create_repo_maven_proxy
     - create_repo_maven_group
     - create_repo_maven_hosted
+    - create_repo_npm_hosted
+    - create_repo_npm_proxy
+    - create_repo_npm_group
     - create_task

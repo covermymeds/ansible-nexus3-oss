@@ -63,6 +63,15 @@
 - include: create_repo_maven_group_each.yml
   with_items: "{{ nexus_repos_maven_group }}"
 
+- include: create_repo_npm_proxy_each.yml
+  with_items: "{{ nexus_repos_npm_proxy }}"
+
+- include: create_repo_npm_hosted_each.yml
+  with_items: "{{ nexus_repos_npm_hosted }}"
+
+- include: create_repo_npm_group_each.yml
+  with_items: "{{ nexus_repos_npm_group }}"
+
 - include: call_script.yml
   vars:
     script_name: setup_anonymous_access

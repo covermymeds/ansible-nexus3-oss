@@ -193,6 +193,10 @@ nexus_repos_rubygems_proxy: []
 #     blob_store: default
 #     remote_url: https://rubygems.org
 
+nexus_repos_npm_hosted: []
+nexus_repos_npm_group: []
+nexus_repos_npm_proxy: []
+
 _nexus_privilege_defaults:
   type: repository-view
   format: maven2
@@ -216,3 +220,8 @@ _nexus_repos_docker_defaults:
   strict_content_validation: true
   v1_enabled: true                 # currently required for search to work
   write_policy: allow              # To overwrite :latest this is required (AFAIK)
+
+_nexus_repos_npm_defaults:
+  blob_store: default # Note : cannot be updated once the repo has been created
+  strict_content_validation: true
+  write_policy: allow_once # allow_once or allow

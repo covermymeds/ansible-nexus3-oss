@@ -1,0 +1,8 @@
+---
+
+- name: Stop nexus service
+  systemd:
+    name: nexus
+    daemon_reload: yes
+    enabled: yes
+    state: stopped

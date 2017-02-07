@@ -35,6 +35,19 @@
     force: no
     copy: false
 
+- name: Check where nexus-latest points at
+  stat:
+    path: "{{ nexus_installation_dir }}/nexus-latest"
+  register: nexus_latest_stat
+
+- name: Check whether we're at desired version already
+  set_fact:
+    nexus_up_to_date: true
+  when:
+    - nexus_latest_stat.stat.islnk is defined
+    - nexus_latest_stat.stat.islnk == true
+    - nexus_latest_stat.stat.lnk_source == "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}"
+
 - name: Check if SystemD service is installed
   stat:
     path: /etc/systemd/system/nexus.service
@@ -45,7 +58,7 @@
     state: stopped
     daemon_reload: yes
     name: nexus
-  when: nexus_systemd_service_file.stat.exists
+  when: nexus_systemd_service_file.stat.exists and (nexus_up_to_date is not defined or not nexus_up_to_date)
 
 - name: Update symlink nexus-latest
   file:
@@ -53,11 +66,13 @@
     src: "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}"
     state: link
   register: nexus_latest_version
+  notify: "Stop nexus service"
 
 - name: Delete unpacked data directory
   file:
     path: "{{ nexus_installation_dir }}/nexus-latest/data"
     state: absent
+  notify: "Stop nexus service"
 
 - name: Get path to default settings
   set_fact:
@@ -94,6 +109,7 @@
     mode: "0755"
     recurse: false
   with_items: "{{ nexus_app_dir_settings_dirs }}"
+  notify: "Stop nexus service"
 
 - name: Create Nexus data directory
   file:
@@ -101,24 +117,28 @@
     state: "directory"
     owner: "{{ nexus_os_user }}"
     group: "{{ nexus_os_group }}"
+  notify: "Stop nexus service"
 
 - name: Setup Nexus data directory
   lineinfile:
     dest: "{{ nexus_installation_dir }}/nexus-latest/bin/nexus.vmoptions"
     regexp: "^-Dkaraf.data=.*"
     line: "-Dkaraf.data={{ nexus_data_dir }}"
+  notify: "Stop nexus service"
 
 - name: Setup JVM logfile directory
   lineinfile:
     dest: "{{ nexus_installation_dir }}/nexus-latest/bin/nexus.vmoptions"
     regexp: "^-XX:LogFile=.*"
     line: "-XX:LogFile={{ nexus_data_dir }}/log/jvm.log"
+  notify: "Stop nexus service"
 
 - name: Setup Nexus default timezone
   lineinfile:
     dest: "{{ nexus_installation_dir }}/nexus-latest/bin/nexus.vmoptions"
     regexp: "^-Duser.timezone=.*"
     line: "-Duser.timezone={{ nexus_timezone }}"
+  notify: "Stop nexus service"
 
 - name: Create Nexus tmp directory
   file:
@@ -126,24 +146,28 @@
     state: "directory"
     owner: "{{ nexus_os_user }}"
     group: "{{ nexus_os_group }}"
+  notify: "Stop nexus service"
 
 - name: Setup Nexus tmp directory
   lineinfile:
     dest: "{{ nexus_installation_dir }}/nexus-latest/bin/nexus.vmoptions"
     regexp: "^-Djava.io.tmpdir=.*"
     line: "-Djava.io.tmpdir={{ nexus_tmp_dir }}"
+  notify: "Stop nexus service"
 
 - name: Set NEXUS_HOME for the service user
   lineinfile:
     dest: "/home/{{ nexus_os_user }}/.bashrc"
     regexp: "^export NEXUS_HOME=.*"
     line: "export NEXUS_HOME={{ nexus_installation_dir }}/nexus-latest"
+  notify: "Stop nexus service"
 
 - name: Set nexus user
   lineinfile:
     dest: "{{ nexus_installation_dir }}/nexus-latest/bin/nexus.rc"
     regexp: ".*run_as_user=.*"
     line: "run_as_user=\"{{ nexus_os_user }}\""
+  notify: "Stop nexus service"
 
 # Allow manual httpd setup by specifying this value directly
 - name: Set nexus service bind address
@@ -151,15 +175,21 @@
     dest: "{{ nexus_default_settings_file }}"
     regexp: "^application-host=.*"
     line: "application-host={{ nexus_bind_address }}"
+  notify: "Stop nexus service"
 
 - name: Create systemd service configuration
   template:
     src: "nexus.service"
     dest: "/etc/systemd/system"
+  notify: "Stop nexus service"
 
 - name: 'Check if data directory is empty (first-time install)'
   command: "ls {{ nexus_data_dir }}"
   register: nexus_data_dir_contents
+  changed_when: false
+
+- name: Process handlers if needed
+  meta: flush_handlers
 
 - name: Clean cache for upgrade process
   file:
@@ -167,18 +197,24 @@
     state: touch
   when: nexus_latest_version.changed and nexus_data_dir_contents.stdout != ""
 
-- name: Enable nexus service
+- name: Start nexus service
   systemd:
     name: nexus
     daemon_reload: yes
-    enabled: yes
     state: started
+  register: nexus_start
+
+- name: Enable nexus service
+  systemd:
+    name: nexus
+    enabled: yes
 
 - name: Waiting for Nexus service to be ready...
   wait_for:
     path: "{{ nexus_data_dir }}/log/nexus.log"
     search_regex: "Started Sonatype Nexus OSS .*"
     timeout: 1800
+  when: nexus_start.changed
 
 - name: Waiting for nexus to be ready...
   wait_for:
